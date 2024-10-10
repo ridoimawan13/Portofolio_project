@@ -1,0 +1,89 @@
+!apt-get install unrar
+# Ekstrak file rar ke direktori saat ini
+!unrar x /content/LOG.rar 
+import os
+import pandas as pd
+import json
+# Directories where the files are extracted
+directories = ["/content/LOG/123", "/content/LOG/345", "/content/LOG/567"]
+
+# Create a list to store the dataframes
+frames = []
+
+# Loop through each directory and read files
+for directory in directories:
+    # Get all .txt files in the current directory
+    files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.txt')]
+
+    # Read each file and append to frames
+    for file in files:
+        try:
+            # Read the file as text
+            with open(file, 'r') as f:
+                content = f.read()
+
+            # Convert the string content to a JSON object
+            json_data = json.loads(content.replace("}{", "},{"))  # Ensure proper separation between JSON objects
+
+            # Create a DataFrame from the JSON object
+            new_df = pd.json_normalize(json_data)
+            frames.append(new_df)
+
+            print(f"Successfully read {file}. Shape: {new_df.shape}")  # Print the shape of the dataframe
+
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+# Optionally, combine all dataframes into one
+if frames:
+    combined_df = pd.concat(frames, ignore_index=True)
+    print(combined_df.head())  # Display the first few rows of the combined dataframe
+else:
+    print("No data frames were created.")
+combined_df.head(50)
+# Hitung frekuensi setiap jenis aktivitas
+activity_counts = combined_df['mode'].value_counts()
+
+# Menampilkan hasil
+# Aktivitas paling sering digunakan
+most_frequent_activity = activity_counts.idxmax()
+most_frequent_count = activity_counts.max()
+
+# Aktivitas paling jarang digunakan
+least_frequent_activity = activity_counts.idxmin()
+least_frequent_count = activity_counts.min()
+
+# Menampilkan hasil
+print("Aktivitas Paling Sering Digunakan:")
+print(f"Jenis Aktivitas: {most_frequent_activity}, Frekuensi: {most_frequent_count}")
+
+print("\nAktivitas Paling Jarang Digunakan:")
+print(f"Jenis Aktivitas: {least_frequent_activity}, Frekuensi: {least_frequent_count}")
+
+import matplotlib.pyplot as plt
+
+# Pastikan combined_df sudah didefinisikan dari langkah sebelumnya
+
+# Hitung frekuensi setiap jenis aktivitas
+activity_counts = combined_df['mode'].value_counts()
+
+# Aktivitas paling sering digunakan
+most_frequent_activity = activity_counts.idxmax()
+print("Aktivitas Paling Sering Digunakan:", most_frequent_activity)
+
+# Langkah 2: Mengonversi kolom timestamp menjadi datetime
+combined_df['timestamp'] = pd.to_datetime(combined_df['timestamp'])
+
+# Mengelompokkan data berdasarkan waktu (misalnya, per hari)
+# Anda dapat mengubah frekuensi sesuai kebutuhan (misalnya, 'M' untuk bulanan)
+time_series_data = combined_df[combined_df['mode'] == most_frequent_activity].groupby(combined_df['timestamp'].dt.date).size()
+
+# Langkah 3: Melakukan analisis time series
+plt.figure(figsize=(12, 6))
+time_series_data.plot()
+plt.title(f'Trend Aktivitas: {most_frequent_activity}')
+plt.xlabel('Tanggal')
+plt.ylabel('Jumlah Aktivitas')
+plt.xticks(rotation=45)
+plt.grid()
+plt.show()
