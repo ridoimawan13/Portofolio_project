@@ -1,0 +1,80 @@
+file_path = '/content/datatransaksi (2).sql'
+  
+# Load the SQL file content to inspect it
+with open(file_path, 'r') as file:
+    sql_content = file.read()
+  
+import pandas as pd
+import re
+
+# Extract the insert statements from the SQL file content
+insert_statements = re.findall(r"insert into `laporan` .*? values\((.*?)\);", sql_content)
+  
+# Define columns based on the table structure: id, id_user, tanggal, jumlah_transaksi, jumlah_total
+data = []
+
+for statement in insert_statements:
+    # Clean and split the values
+    values = statement.split(',')
+    # Removing quotes from values and stripping any extra spaces
+    values = [value.strip().strip("'") for value in values]
+    data.append(values)
+
+# Create a DataFrame with appropriate column names
+df = pd.DataFrame(data, columns=["id", "id_user", "tanggal", "jumlah_transaksi", "jumlah_total"])
+
+# Convert columns to appropriate data types
+df["id"] = df["id"].astype(int)
+df["id_user"] = df["id_user"].astype(int)
+df["tanggal"] = pd.to_datetime(df["tanggal"])
+df["jumlah_transaksi"] = df["jumlah_transaksi"].astype(int)
+df["jumlah_total"] = df["jumlah_total"].astype(float)
+
+# Filter out transactions with jumlah_total <= 0
+df = df[df["jumlah_total"] > 0]
+
+# Display the first few rows of the cleaned data
+df.head()
+
+#Pastikan kolom 'tanggal' diubah ke datetime dengan format yang tepat
+df['tanggal'] = pd.to_datetime(df['tanggal'], format='%Y-%m-%d', errors='coerce')
+
+# Buat filter untuk rentang tanggal dari Maret 2017 hingga Maret 2018
+start_date = '2017-03-01'
+end_date = '2018-03-30'
+df = df[(df['tanggal'] >= start_date) & (df['tanggal'] <= end_date)]
+
+# Periksa apakah ada nilai 'NaT' (Not a Time) setelah konversi
+invalid_dates = df[df['tanggal'].isna()]
+if not invalid_dates.empty:
+    print("Ada data tanggal yang invalid atau kosong:", invalid_dates)
+
+# Buat kolom bulan_tahun dari kolom tanggal
+df['bulan_tahun'] = df['tanggal'].dt.to_period('M')
+
+# Tentukan cohort berdasarkan transaksi pertama user
+df['cohort'] = df.groupby('id_user')['tanggal'].transform('min').dt.to_period('M')
+
+# Hitung cohort period (berapa lama setelah transaksi pertama)
+df['cohort_period'] = (df['bulan_tahun'] - df['cohort']).apply(lambda x: x.n)
+
+# Buat tabel cohort berdasarkan jumlah user unik
+cohort_data = df.groupby(['cohort', 'cohort_period']).agg(n_customers=('id_user', 'nunique')).reset_index()
+
+# Buat pivot table untuk cohort retention
+cohort_pivot = cohort_data.pivot_table(index='cohort', columns='cohort_period', values='n_customers')
+
+# Hitung persentase retensi
+cohort_size = cohort_pivot.iloc[:, 0]
+retention_table = cohort_pivot.divide(cohort_size, axis=0)
+
+#Buat visualisasi heatmap cohort retention
+plt.figure(figsize=(12, 8))
+sns.heatmap(retention_table, annot=True, fmt=".0%", cmap="YlGnBu", cbar=True)
+#Tambahkan judul dan label
+plt.title('Cohort Analysis - User Retention', fontsize=16)
+plt.xlabel('Cohort Period (Months)', fontsize=12)
+plt.ylabel('Cohort (First Transaction Month)', fontsize=12)
+
+#Tampilkan heatmap
+plt.show()
